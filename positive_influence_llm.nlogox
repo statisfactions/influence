@@ -1,4 +1,6 @@
-; Positive Influence Model with LLM Conversations
+<?xml version="1.0" encoding="utf-8"?>
+<model version="NetLogo 7.0.3" snapToGrid="true">
+  <code><![CDATA[; Positive Influence Model with LLM Conversations
 ; Based on Smaldino's positive influence opinion dynamics model
 ; Agents converse via a local Ollama LLM instead of using numeric opinion updates
 ;
@@ -116,191 +118,30 @@ to recolor  ;; turtle procedure
   ;; Map opinion [-1, 1] to color on a grayscale: 0 = black, 9.9 = white
   let shade (opinion + 1) / 2 * 9.9
   set color shade
-end
-@#$#@#$#@
-GRAPHICS-WINDOW
-210
-10
-620
-420
--1
--1
-12.0
-1
-10
-1
-1
-1
-0
-0
-0
-1
--16
-16
--16
-16
-1
-1
-1
-ticks
-30.0
-
-BUTTON
-10
-10
-90
-43
-setup
-setup
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-95
-10
-190
-43
-go-once
-step
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-BUTTON
-10
-48
-190
-81
-go
-step
-T
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-SLIDER
-10
-90
-190
-123
-num-agents
-num-agents
-4
-100
-25.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-10
-128
-190
-161
-memory-length
-memory-length
-1
-20
-5.0
-1
-1
-NIL
-HORIZONTAL
-
-INPUTBOX
-10
-170
-410
-230
-discussion-topic
-whether AI should be heavily regulated or allowed to develop freely
-1
-0
-String
-
-INPUTBOX
-10
-235
-200
-295
-ollama-model
-phi3:mini
-1
-0
-String
-
-PLOT
-210
-430
-620
-600
-Opinion Distribution
-Opinion
-Count
--1.0
-1.0
-0.0
-10.0
-true
-false
-"set-plot-x-range -1 1\nset-histogram-num-bars 10" ""
-PENS
-"default" 0.2 1 -16777216 true "" "histogram [opinion] of turtles"
-
-MONITOR
-420
-10
-620
-55
-Last Conversation
-last-snippet
-0
-1
-11
-
-MONITOR
-420
-60
-520
-105
-Tick
-ticks
-0
-1
-11
-
-MONITOR
-525
-60
-620
-105
-Num Agents
-count turtles
-0
-1
-11
-
-@#$#@#$#@
-## WHAT IS IT?
+end]]></code>
+  <widgets>
+    <view x="245" wrappingAllowedX="false" y="35" frameRate="30.0" minPycor="-16" height="405" showTickCounter="true" patchSize="12.0" fontSize="10" wrappingAllowedY="false" width="406" tickCounterLabel="ticks" maxPycor="16" updateMode="1" maxPxcor="16" minPxcor="-16"></view>
+    <button x="10" y="10" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="80" display="setup">setup</button>
+    <button x="10" y="55" height="40" disableUntilTicks="false" forever="true" kind="Observer" width="180" display="go">step</button>
+    <slider x="10" step="1" y="104" max="100" width="180" display="num-agents" height="50" min="4" direction="Horizontal" default="9.0" variable="num-agents"></slider>
+    <slider x="10" step="1" y="159" max="20" width="180" display="memory-length" height="50" min="1" direction="Horizontal" default="5.0" variable="memory-length"></slider>
+    <plot x="210" autoPlotX="true" yMax="10.0" autoPlotY="true" yAxis="Count" y="478" xMin="-1.0" height="175" legend="false" xMax="1.0" yMin="0.0" width="410" xAxis="Opinion" display="Opinion Distribution">
+      <setup>set-plot-x-range -1 1
+set-histogram-num-bars 10</setup>
+      <update></update>
+      <pen interval="0.2" mode="1" display="default" color="-16777216" legend="true">
+        <setup></setup>
+        <update>histogram [opinion] of turtles</update>
+      </pen>
+    </plot>
+    <monitor x="645" precision="0" y="90" height="60" fontSize="11" width="100" display="Tick">ticks</monitor>
+    <monitor x="765" precision="0" y="100" height="60" fontSize="11" width="100" display="Num Agents">count turtles</monitor>
+    <input x="725" multiline="false" y="500" height="60" variable="ollama-model" type="string" width="190">phi3:mini</input>
+    <input x="10" multiline="false" y="218" height="75" variable="discussion-topic" type="string" width="240">AI should be allowed to develop freely, without government regulation.</input>
+    <monitor x="655" precision="0" y="155" height="70" fontSize="11" width="450" display="Last Conversation">last-snippet</monitor>
+    <button x="95" y="10" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="95" display="go-once">step</button>
+  </widgets>
+  <info>## WHAT IS IT?
 
 This model recreates Smaldino's positive influence opinion dynamics model, replacing the simple numeric opinion update rule with actual natural language conversations between agents powered by a local Ollama LLM.
 
@@ -344,35 +185,43 @@ Each agent maintains a memory file of past conversations and all interactions ar
 
 ## CREDITS AND REFERENCES
 
-Based on Smaldino's positive influence model. LLM integration by Claude.
-@#$#@#$#@
-default
-true
-0
-Polygon -7500403 true true 150 5 40 250 150 205 260 250
-
-circle
-false
-0
-Circle -7500403 true true 0 0 300
-
-@#$#@#$#@
-NetLogo 6.4.0
-@#$#@#$#@
-@#$#@#$#@
-@#$#@#$#@
-@#$#@#$#@
-@#$#@#$#@
-default
-0.0
--0.2 0 0.0 1.0
-0.0 1 1.0 0.0
-0.2 0 0.0 1.0
-link direction
-true
-0
-Line -7500403 true 150 150 90 180
-Line -7500403 true 150 150 210 180
-@#$#@#$#@
-1
-@#$#@#$#@
+Based on Smaldino's positive influence model. LLM integration by Claude.</info>
+  <turtleShapes>
+    <shape name="default" rotatable="true" editableColorIndex="0">
+      <polygon color="-1920102913" filled="true" marked="true">
+        <point x="150" y="5"></point>
+        <point x="40" y="250"></point>
+        <point x="150" y="205"></point>
+        <point x="260" y="250"></point>
+      </polygon>
+    </shape>
+    <shape name="circle" rotatable="false" editableColorIndex="0">
+      <circle x="0" y="0" marked="true" color="-1920102913" diameter="300" filled="true"></circle>
+    </shape>
+  </turtleShapes>
+  <linkShapes>
+    <shape name="default" curviness="0.0">
+      <lines>
+        <line x="-0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+        <line x="0.0" visible="true">
+          <dash value="1.0"></dash>
+          <dash value="0.0"></dash>
+        </line>
+        <line x="0.2" visible="false">
+          <dash value="0.0"></dash>
+          <dash value="1.0"></dash>
+        </line>
+      </lines>
+      <indicator>
+        <shape name="link direction" rotatable="true" editableColorIndex="0">
+          <line endX="90" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+          <line endX="210" startY="150" marked="true" color="-1920102913" endY="180" startX="150"></line>
+        </shape>
+      </indicator>
+    </shape>
+  </linkShapes>
+  <previewCommands>setup repeat 75 [ go ]</previewCommands>
+</model>
