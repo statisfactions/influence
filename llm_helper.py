@@ -246,13 +246,13 @@ def _parse_opinions(response, agent_a_id, agent_b_id):
         end = response.rfind("}") + 1
         if start >= 0 and end > start:
             data = json.loads(response[start:end])
-            a = float(data.get("a", 0.0))
-            b = float(data.get("b", 0.0))
+            a = float(data.get("a") or 0.0)
+            b = float(data.get("b") or 0.0)
             # Clamp to [-1, 1]
             a = max(-1.0, min(1.0, a))
             b = max(-1.0, min(1.0, b))
             return a, b
-    except (json.JSONDecodeError, ValueError, KeyError):
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
         pass
 
     # Fallback: return current opinions with small random drift
