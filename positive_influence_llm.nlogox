@@ -136,10 +136,20 @@ set-histogram-num-bars 10</setup>
     </plot>
     <monitor x="645" precision="0" y="90" height="60" fontSize="11" width="100" display="Tick">ticks</monitor>
     <monitor x="765" precision="0" y="100" height="60" fontSize="11" width="100" display="Num Agents">count turtles</monitor>
-    <input x="725" multiline="false" y="500" height="60" variable="ollama-model" type="string" width="190">phi3:mini</input>
-    <input x="10" multiline="false" y="218" height="75" variable="discussion-topic" type="string" width="240">AI should be allowed to develop freely, without government regulation.</input>
+    <input x="725" multiline="false" y="500" height="60" variable="ollama-model" type="string" width="190">qwen2.5:0.5b</input>
+    <input x="10" multiline="false" y="218" height="75" variable="discussion-topic" type="string" width="240">AI represents the "Mark of the Beast", representing the end times of humanity.</input>
     <monitor x="655" precision="0" y="155" height="70" fontSize="11" width="450" display="Last Conversation">last-snippet</monitor>
     <button x="95" y="10" height="40" disableUntilTicks="false" forever="false" kind="Observer" width="95" display="go-once">step</button>
+    <plot x="655" autoPlotX="true" yMax="1.0" autoPlotY="false" yAxis="opinions" y="235" xMin="0.0" height="250" legend="false" xMax="10.0" yMin="-1.0" width="400" xAxis="time" display="Agent opinions over time">
+      <setup></setup>
+      <update></update>
+      <pen interval="1.0" mode="2" display="default" color="-14730904" legend="true">
+        <setup></setup>
+        <update>ask turtles [
+plotxy ticks opinion
+]</update>
+      </pen>
+    </plot>
   </widgets>
   <info>## WHAT IS IT?
 

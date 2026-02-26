@@ -36,7 +36,7 @@ def call_ollama(prompt, model=None):
         "stream": False,
         "options": {
             "temperature": 0.8,
-            "num_predict": 300,
+            "num_predict": 150,
         }
     }).encode("utf-8")
 
