@@ -52,7 +52,7 @@ def _load_env():
 
 # ── LLM API ──────────────────────────────────────────────────────────────────
 
-def call_llm(prompt, model=None, num_predict=300):
+def call_llm(prompt, model=None, num_predict=150):
     """Route to the active backend (Ollama or Claude)."""
     if _backend == "claude":
         return call_claude(prompt, model=model, max_tokens=num_predict)
@@ -367,7 +367,7 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"{da_block}"
         f"State your position on this topic and give ONE specific argument "
         f"supporting it. Be direct — no hedging or seeking common ground. "
-        f"1-3 sentences only."
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
     )
     turn_1 = call_llm(turn1_prompt)
     if not turn_1:
@@ -382,7 +382,8 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"{da_block}"
         f'Someone said: "{turn_1}"\n\n'
         f"Respond to their argument. Defend your own position with a specific "
-        f"counterpoint or evidence. Do not simply agree. 1-3 sentences only.\n\n"
+        f"counterpoint or evidence. Do not simply agree. "
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
         f"End your response with your opinion score on a new line.\n"
         f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
         f"Example: OPINION: 0.35\n"
@@ -408,7 +409,7 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f'They replied: "{turn_2}"\n\n'
         f"Respond to their points. You may shift your view if they made a "
         f"compelling argument, or push back if you disagree. Be specific. "
-        f"1-3 sentences only.\n\n"
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
         f"End your response with your opinion score on a new line.\n"
         f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
         f"Example: OPINION: 0.35\n"
