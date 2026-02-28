@@ -138,7 +138,16 @@ def _extract_opinion_from_response(response, fallback):
     """Extract an OPINION: <float> line from an LLM response. Returns the float or fallback."""
     global _parse_attempts, _parse_failures
     _parse_attempts += 1
-    match = re.search(r"OPINION:\s*([-+]?\d*\.?\d+)", response)
+    # Strip markdown bold markers so **OPINION:** **-0.83** still matches
+    cleaned = re.sub(r"\*\*", "", response)
+    # Try exact OPINION: <float> pattern first
+    match = re.search(r"OPINION:\s*([-+]?\d*\.?\d+)", cleaned)
+    if not match:
+        # Fallback: find any float on the same line as OPINION
+        match = re.search(r"OPINION:.*?([-+]?\d*\.?\d+)", cleaned)
+    if not match:
+        # Last resort: find any float near "opinion" (case-insensitive) within a few words
+        match = re.search(r"(?i)opinion[\s\w]{0,20}([-+]?\d*\.?\d+)", cleaned)
     if match:
         try:
             val = float(match.group(1))
@@ -293,8 +302,10 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f'Someone said: "{turn_1}"\n\n'
         f"Respond to their argument. Defend your own position with a specific "
         f"counterpoint or evidence. Do not simply agree. 1-3 sentences only.\n\n"
-        f"After your response, on a new line write exactly: "
-        f"OPINION: <your updated opinion as a float from -1.0 to 1.0>"
+        f"End your response with your opinion score on a new line.\n"
+        f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
+        f"Example: OPINION: 0.35\n"
+        f"Example: OPINION: -0.72"
     )
     turn2_raw = call_ollama(turn2_prompt)
     if not turn2_raw:
@@ -317,8 +328,10 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"Respond to their points. You may shift your view if they made a "
         f"compelling argument, or push back if you disagree. Be specific. "
         f"1-3 sentences only.\n\n"
-        f"After your response, on a new line write exactly: "
-        f"OPINION: <your updated opinion as a float from -1.0 to 1.0>"
+        f"End your response with your opinion score on a new line.\n"
+        f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
+        f"Example: OPINION: 0.35\n"
+        f"Example: OPINION: -0.72"
     )
     turn3_raw = call_ollama(turn3_prompt)
     if not turn3_raw:
