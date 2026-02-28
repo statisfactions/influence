@@ -3,3 +3,6 @@ transcript.txt
 __pycache__/
 *.pyc
 CLAUDE.md
+.env
+!.env.example
+parse_failures.log

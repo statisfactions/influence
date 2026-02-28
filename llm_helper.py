@@ -27,9 +27,37 @@ _model = "phi3:mini"
 _memory_length = 5
 _num_agents = 25
 _ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+_backend = "ollama"  # "ollama" or "claude"
+_claude_api_key = ""
 
 
-# ── Ollama API ────────────────────────────────────────────────────────────────
+def _load_env():
+    """Load variables from .env file in the script directory."""
+    env_path = os.path.join(SCRIPT_DIR, ".env")
+    if not os.path.exists(env_path):
+        return {}
+    env_vars = {}
+    with open(env_path, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if "=" in line:
+                key, _, value = line.partition("=")
+                # Strip optional quotes
+                value = value.strip().strip("'\"")
+                env_vars[key.strip()] = value
+    return env_vars
+
+
+# ── LLM API ──────────────────────────────────────────────────────────────────
+
+def call_llm(prompt, model=None, num_predict=300):
+    """Route to the active backend (Ollama or Claude)."""
+    if _backend == "claude":
+        return call_claude(prompt, model=model, max_tokens=num_predict)
+    return call_ollama(prompt, model=model, num_predict=num_predict)
+
 
 def call_ollama(prompt, model=None, num_predict=300):
     """Send a prompt to the Ollama /api/generate endpoint and return the response text."""
@@ -56,6 +84,45 @@ def call_ollama(prompt, model=None, num_predict=300):
             return body.get("response", "").strip()
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
         print(f"[llm_helper] Ollama error: {e}")
+        return ""
+
+
+def call_claude(prompt, model=None, max_tokens=300):
+    """Send a prompt to the Anthropic Messages API and return the response text."""
+    if model is None:
+        model = _model
+    if not _claude_api_key:
+        print("[llm_helper] Claude API key not set — check .env file")
+        return ""
+
+    payload = json.dumps({
+        "model": model,
+        "max_tokens": max_tokens,
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.8,
+    }).encode("utf-8")
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "x-api-key": _claude_api_key,
+            "anthropic-version": "2023-06-01",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+            # Extract text from the first content block
+            content = body.get("content", [])
+            if content and content[0].get("type") == "text":
+                return content[0]["text"].strip()
+            return ""
+    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+        print(f"[llm_helper] Claude API error: {e}")
+        if hasattr(e, "read"):
+            print(f"[llm_helper] Response: {e.read().decode('utf-8', errors='replace')[:500]}")
         return ""
 
 
@@ -124,7 +191,7 @@ def _generate_rationale(opinion, topic):
         f"Be concrete — reference a specific concern, experience, or value. "
         f"Do not be generic."
     )
-    response = call_ollama(prompt, num_predict=50)
+    response = call_llm(prompt, num_predict=50)
     if response:
         # Take just the first sentence to keep it concise
         first_line = response.strip().split("\n")[0].strip()
@@ -177,16 +244,30 @@ def _log_transcript(tick, agent_a, agent_b, conversation, opinion_a, opinion_b):
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-def setup_agents(num_agents, topic, model_name, memory_length=5):
+def setup_agents(num_agents, topic, model_name, memory_length=5, backend="ollama"):
     """
     Initialize agent memory files and set random initial stances.
     Returns a list of initial opinion scores (floats in [-1, 1]).
+    backend: "ollama" or "claude"
     """
     global _topic, _model, _memory_length, _num_agents, _parse_attempts, _parse_failures
+    global _backend, _claude_api_key
     _topic = topic
     _model = model_name
     _memory_length = memory_length
     _num_agents = num_agents
+    _backend = backend.lower()
+
+    if _backend == "claude":
+        env_vars = _load_env()
+        _claude_api_key = env_vars.get("ANTHROPIC_API_KEY", "")
+        if not _claude_api_key:
+            print("[llm_helper] WARNING: ANTHROPIC_API_KEY not found in .env file")
+        # Default to haiku if no model specified or if an ollama model name was passed
+        if not model_name or ":" in model_name:
+            _model = "claude-haiku-4-5-20251001"
+            print(f"[llm_helper] Using Claude model: {_model}")
+        print(f"[llm_helper] Backend: Claude API")
 
     # Create/clear memory directory
     os.makedirs(MEMORY_DIR, exist_ok=True)
@@ -288,7 +369,7 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"supporting it. Be direct — no hedging or seeking common ground. "
         f"1-3 sentences only."
     )
-    turn_1 = call_ollama(turn1_prompt)
+    turn_1 = call_llm(turn1_prompt)
     if not turn_1:
         turn_1 = f"I believe {stance_a}."
 
@@ -307,7 +388,7 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"Example: OPINION: 0.35\n"
         f"Example: OPINION: -0.72"
     )
-    turn2_raw = call_ollama(turn2_prompt)
+    turn2_raw = call_llm(turn2_prompt)
     if not turn2_raw:
         turn2_raw = f"I disagree. {stance_b}.\nOPINION: {opinion_b_current:.2f}"
 
@@ -333,7 +414,7 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"Example: OPINION: 0.35\n"
         f"Example: OPINION: -0.72"
     )
-    turn3_raw = call_ollama(turn3_prompt)
+    turn3_raw = call_llm(turn3_prompt)
     if not turn3_raw:
         turn3_raw = f"That's an interesting point, but I maintain my view.\nOPINION: {opinion_a_current:.2f}"
 
