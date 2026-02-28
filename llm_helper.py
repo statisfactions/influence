@@ -17,6 +17,10 @@ import urllib.error
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MEMORY_DIR = os.path.join(SCRIPT_DIR, "agent_memories")
 TRANSCRIPT_PATH = os.path.join(SCRIPT_DIR, "transcript.txt")
+PARSE_LOG_PATH = os.path.join(SCRIPT_DIR, "parse_failures.log")
+
+_parse_attempts = 0
+_parse_failures = 0
 
 _topic = ""
 _model = "phi3:mini"
@@ -132,6 +136,8 @@ def _generate_rationale(opinion, topic):
 
 def _extract_opinion_from_response(response, fallback):
     """Extract an OPINION: <float> line from an LLM response. Returns the float or fallback."""
+    global _parse_attempts, _parse_failures
+    _parse_attempts += 1
     match = re.search(r"OPINION:\s*([-+]?\d*\.?\d+)", response)
     if match:
         try:
@@ -139,6 +145,12 @@ def _extract_opinion_from_response(response, fallback):
             return max(-1.0, min(1.0, val))
         except ValueError:
             pass
+    # Log parse failure
+    _parse_failures += 1
+    rate = _parse_failures / _parse_attempts * 100
+    print(f"[llm_helper] Parse failure ({_parse_failures}/{_parse_attempts}, {rate:.1f}%) — using fallback {fallback:.2f}")
+    with open(PARSE_LOG_PATH, "a", encoding="utf-8") as f:
+        f.write(f"Failure {_parse_failures}/{_parse_attempts} ({rate:.1f}%) | fallback={fallback:.2f} | response={response[:200]!r}\n")
     # Fallback: return previous opinion with small drift
     return max(-1.0, min(1.0, fallback + random.uniform(-0.1, 0.1)))
 
@@ -161,7 +173,7 @@ def setup_agents(num_agents, topic, model_name, memory_length=5):
     Initialize agent memory files and set random initial stances.
     Returns a list of initial opinion scores (floats in [-1, 1]).
     """
-    global _topic, _model, _memory_length, _num_agents
+    global _topic, _model, _memory_length, _num_agents, _parse_attempts, _parse_failures
     _topic = topic
     _model = model_name
     _memory_length = memory_length
@@ -174,9 +186,15 @@ def setup_agents(num_agents, topic, model_name, memory_length=5):
         if os.path.isfile(fp):
             os.remove(fp)
 
-    # Clear transcript
+    # Reset parse failure counters
+    _parse_attempts = 0
+    _parse_failures = 0
+
+    # Clear transcript and parse failure log
     with open(TRANSCRIPT_PATH, "w", encoding="utf-8") as f:
         f.write(f"# Transcript: {topic}\n# Model: {model_name}\n\n")
+    with open(PARSE_LOG_PATH, "w", encoding="utf-8") as f:
+        f.write(f"# Parse failures: {topic} | {model_name}\n")
 
     # Generate random initial stances and opinions
     initial_opinions = []
