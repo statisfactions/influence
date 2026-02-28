@@ -31,7 +31,7 @@ _ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 
 # ── Ollama API ────────────────────────────────────────────────────────────────
 
-def call_ollama(prompt, model=None):
+def call_ollama(prompt, model=None, num_predict=300):
     """Send a prompt to the Ollama /api/generate endpoint and return the response text."""
     if model is None:
         model = _model
@@ -41,7 +41,7 @@ def call_ollama(prompt, model=None):
         "stream": False,
         "options": {
             "temperature": 0.8,
-            "num_predict": 300,
+            "num_predict": num_predict,
         }
     }).encode("utf-8")
 
@@ -124,7 +124,7 @@ def _generate_rationale(opinion, topic):
         f"Be concrete — reference a specific concern, experience, or value. "
         f"Do not be generic."
     )
-    response = call_ollama(prompt)
+    response = call_ollama(prompt, num_predict=50)
     if response:
         # Take just the first sentence to keep it concise
         first_line = response.strip().split("\n")[0].strip()
