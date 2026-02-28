@@ -8,6 +8,7 @@ Used by positive_influence_llm.nlogo via the NetLogo Python extension.
 import os
 import json
 import random
+import re
 import urllib.request
 import urllib.error
 
@@ -36,7 +37,7 @@ def call_ollama(prompt, model=None):
         "stream": False,
         "options": {
             "temperature": 0.8,
-            "num_predict": 150,
+            "num_predict": 300,
         }
     }).encode("utf-8")
 
@@ -69,7 +70,6 @@ def get_agent_memory(agent_id, length=None):
         return ""
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
-    # Each entry is separated by a blank line
     entries = [e.strip() for e in text.split("\n---\n") if e.strip()]
     recent = entries[-length:]
     return "\n---\n".join(recent)
@@ -89,11 +89,58 @@ def _get_current_stance(agent_id):
         return "no stated opinion yet"
     with open(path, "r", encoding="utf-8") as f:
         text = f.read()
-    # Look for the last "Stance:" line
     for line in reversed(text.splitlines()):
         if line.startswith("Stance:"):
             return line[len("Stance:"):].strip()
     return "no stated opinion yet"
+
+
+def _get_current_rationale(agent_id):
+    """Extract the most recent rationale line from an agent's memory."""
+    path = _memory_path(agent_id)
+    if not os.path.exists(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as f:
+        text = f.read()
+    for line in reversed(text.splitlines()):
+        if line.startswith("Rationale:"):
+            return line[len("Rationale:"):].strip()
+    return ""
+
+
+# ── Rationale generation ─────────────────────────────────────────────────────
+
+def _generate_rationale(opinion, topic):
+    """Prompt the LLM to generate a 1-sentence reason for why an agent holds their opinion."""
+    prompt = (
+        f'The topic is: "{topic}"\n'
+        f"A person's opinion on this is {opinion:.2f} on a scale from -1.0 "
+        f"(strongly against) to +1.0 (strongly in favor).\n"
+        f"Write ONE specific sentence explaining why they hold this position. "
+        f"Be concrete — reference a specific concern, experience, or value. "
+        f"Do not be generic."
+    )
+    response = call_ollama(prompt)
+    if response:
+        # Take just the first sentence to keep it concise
+        first_line = response.strip().split("\n")[0].strip()
+        return first_line
+    return "No specific reason given."
+
+
+# ── Opinion extraction from response ─────────────────────────────────────────
+
+def _extract_opinion_from_response(response, fallback):
+    """Extract an OPINION: <float> line from an LLM response. Returns the float or fallback."""
+    match = re.search(r"OPINION:\s*([-+]?\d*\.?\d+)", response)
+    if match:
+        try:
+            val = float(match.group(1))
+            return max(-1.0, min(1.0, val))
+        except ValueError:
+            pass
+    # Fallback: return previous opinion with small drift
+    return max(-1.0, min(1.0, fallback + random.uniform(-0.1, 0.1)))
 
 
 # ── Transcript logging ────────────────────────────────────────────────────────
@@ -133,18 +180,8 @@ def setup_agents(num_agents, topic, model_name, memory_length=5):
 
     # Generate random initial stances and opinions
     initial_opinions = []
-    stance_templates = [
-        "Strongly in favor",
-        "Somewhat in favor",
-        "Slightly in favor",
-        "Neutral / undecided",
-        "Slightly against",
-        "Somewhat against",
-        "Strongly against",
-    ]
 
     for i in range(num_agents):
-        # Random initial opinion
         opinion = random.uniform(-1.0, 1.0)
         initial_opinions.append(opinion)
 
@@ -160,9 +197,15 @@ def setup_agents(num_agents, topic, model_name, memory_length=5):
         else:
             stance = f"Strongly against the position on {topic}"
 
-        # Write initial memory
+        # Generate a rationale via LLM
+        rationale = _generate_rationale(opinion, topic)
+
+        # Write initial memory with stance and rationale
         with open(_memory_path(i), "w", encoding="utf-8") as f:
-            f.write(f"Stance: {stance} (opinion score: {opinion:.2f})\n---\n")
+            f.write(f"Stance: {stance} (opinion score: {opinion:.2f})\n")
+            f.write(f"Rationale: {rationale}\n---\n")
+
+        print(f"[llm_helper] Agent {i}/{num_agents} initialized (opinion: {opinion:.2f})")
 
     return initial_opinions
 
@@ -171,7 +214,7 @@ def setup_agents(num_agents, topic, model_name, memory_length=5):
 
 def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     """
-    Run a 3-turn conversation between two agents via Ollama.
+    Run a 3-turn conversation between two agents via Ollama (one LLM call per turn).
     Returns a dict: {"opinion_a": float, "opinion_b": float, "snippet": str}
     """
     if memory_length is None:
@@ -179,55 +222,118 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
 
     stance_a = _get_current_stance(agent_a_id)
     stance_b = _get_current_stance(agent_b_id)
+    rationale_a = _get_current_rationale(agent_a_id)
+    rationale_b = _get_current_rationale(agent_b_id)
     memory_a = get_agent_memory(agent_a_id, memory_length)
     memory_b = get_agent_memory(agent_b_id, memory_length)
 
-    # Build conversation prompt
-    memory_context = ""
+    # Extract current numeric opinions for devil's advocate check
+    opinion_a_current = _extract_number(stance_a)
+    opinion_b_current = _extract_number(stance_b)
+
+    # Devil's advocate instruction when agents are within 0.3 of each other
+    devil_advocate = ""
+    if abs(opinion_a_current - opinion_b_current) < 0.3:
+        devil_advocate = (
+            "Challenge the other person's reasoning even if you partly agree. "
+            "Play devil's advocate to explore weaknesses in their argument."
+        )
+
+    # Build memory context strings
+    memory_context_a = ""
     if memory_a:
-        memory_context += f"\nPerson A's recent conversation history:\n{memory_a}\n"
+        memory_context_a = f"\nYour recent conversation history:\n{memory_a}\n"
+    memory_context_b = ""
     if memory_b:
-        memory_context += f"\nPerson B's recent conversation history:\n{memory_b}\n"
+        memory_context_b = f"\nYour recent conversation history:\n{memory_b}\n"
 
-    conv_prompt = f"""You are simulating a brief conversation between two people about {_topic}.
+    # Build devil's advocate block for prompt injection
+    da_block = f"{devil_advocate}\n\n" if devil_advocate else ""
 
-Person A's current stance: {stance_a}
-Person B's current stance: {stance_b}
-{memory_context}
-Write a brief, natural 3-turn conversation (A, B, A). Each turn should be 1-2 sentences. People should engage genuinely with each other's points and may shift their views slightly based on good arguments.
+    # ── Turn 1: Agent A opens ──
+    turn1_prompt = (
+        f'Topic: "{_topic}"\n'
+        f"Your position: {stance_a} (score: {opinion_a_current:.2f})\n"
+        f"Your reasoning: {rationale_a}\n"
+        f"{memory_context_a}"
+        f"{da_block}"
+        f"State your position on this topic and give ONE specific argument "
+        f"supporting it. Be direct — no hedging or seeking common ground. "
+        f"1-3 sentences only."
+    )
+    turn_1 = call_ollama(turn1_prompt)
+    if not turn_1:
+        turn_1 = f"I believe {stance_a}."
 
-Format exactly as:
-A: ...
-B: ...
-A: ..."""
+    # ── Turn 2: Agent B responds ──
+    turn2_prompt = (
+        f'Topic: "{_topic}"\n'
+        f"Your position: {stance_b} (score: {opinion_b_current:.2f})\n"
+        f"Your reasoning: {rationale_b}\n"
+        f"{memory_context_b}"
+        f"{da_block}"
+        f'Someone said: "{turn_1}"\n\n'
+        f"Respond to their argument. Defend your own position with a specific "
+        f"counterpoint or evidence. Do not simply agree. 1-3 sentences only.\n\n"
+        f"After your response, on a new line write exactly: "
+        f"OPINION: <your updated opinion as a float from -1.0 to 1.0>"
+    )
+    turn2_raw = call_ollama(turn2_prompt)
+    if not turn2_raw:
+        turn2_raw = f"I disagree. {stance_b}.\nOPINION: {opinion_b_current:.2f}"
 
-    conversation = call_ollama(conv_prompt)
+    # Parse B's opinion from Turn 2
+    opinion_b = _extract_opinion_from_response(turn2_raw, opinion_b_current)
+    # Strip the OPINION line from displayed text
+    turn_2 = re.sub(r"\n?OPINION:.*", "", turn2_raw).strip()
 
-    if not conversation:
-        # Fallback if LLM fails
-        conversation = f"A: I think about {_topic}...\nB: Interesting point.\nA: Let's discuss more."
+    # ── Turn 3: Agent A replies ──
+    turn3_prompt = (
+        f'Topic: "{_topic}"\n'
+        f"Your position: {stance_a} (score: {opinion_a_current:.2f})\n"
+        f"Your reasoning: {rationale_a}\n"
+        f"{da_block}"
+        f"Conversation so far:\n"
+        f'You said: "{turn_1}"\n'
+        f'They replied: "{turn_2}"\n\n'
+        f"Respond to their points. You may shift your view if they made a "
+        f"compelling argument, or push back if you disagree. Be specific. "
+        f"1-3 sentences only.\n\n"
+        f"After your response, on a new line write exactly: "
+        f"OPINION: <your updated opinion as a float from -1.0 to 1.0>"
+    )
+    turn3_raw = call_ollama(turn3_prompt)
+    if not turn3_raw:
+        turn3_raw = f"That's an interesting point, but I maintain my view.\nOPINION: {opinion_a_current:.2f}"
 
-    # Extract opinions via a second LLM call
-    opinion_prompt = f"""Given this conversation about {_topic}:
+    # Parse A's opinion from Turn 3
+    opinion_a = _extract_opinion_from_response(turn3_raw, opinion_a_current)
+    # Strip the OPINION line from displayed text
+    turn_3 = re.sub(r"\n?OPINION:.*", "", turn3_raw).strip()
 
-{conversation}
-
-Person A's prior stance: {stance_a}
-Person B's prior stance: {stance_b}
-
-Rate each person's final opinion on a scale from -1.0 (strongly against) to +1.0 (strongly in favor).
-Return ONLY a JSON object with no other text: {{"a": <float>, "b": <float>}}"""
-
-    opinion_response = call_ollama(opinion_prompt)
-    opinion_a, opinion_b = _parse_opinions(opinion_response, agent_a_id, agent_b_id)
+    # Build the full conversation text
+    conversation = f"A: {turn_1}\nB: {turn_2}\nA: {turn_3}"
 
     # Build a short snippet for display
-    lines = conversation.strip().split("\n")
-    snippet = lines[0][:80] if lines else "..."
+    snippet = f"A: {turn_1[:80]}" if turn_1 else "..."
+
+    # Carry forward or update rationale
+    rationale_a_updated = rationale_a
+    rationale_b_updated = rationale_b
 
     # Update memories
-    entry_a = f"[Tick {tick}] Talked with agent {agent_b_id}:\n{conversation}\nStance: Opinion score {opinion_a:.2f}"
-    entry_b = f"[Tick {tick}] Talked with agent {agent_a_id}:\n{conversation}\nStance: Opinion score {opinion_b:.2f}"
+    entry_a = (
+        f"[Tick {tick}] Talked with agent {agent_b_id}:\n"
+        f"{conversation}\n"
+        f"Stance: Opinion score {opinion_a:.2f}\n"
+        f"Rationale: {rationale_a_updated}"
+    )
+    entry_b = (
+        f"[Tick {tick}] Talked with agent {agent_a_id}:\n"
+        f"{conversation}\n"
+        f"Stance: Opinion score {opinion_b:.2f}\n"
+        f"Rationale: {rationale_b_updated}"
+    )
     _append_memory(agent_a_id, entry_a)
     _append_memory(agent_b_id, entry_b)
 
@@ -237,44 +343,8 @@ Return ONLY a JSON object with no other text: {{"a": <float>, "b": <float>}}"""
     return {"opinion_a": opinion_a, "opinion_b": opinion_b, "snippet": snippet}
 
 
-def _parse_opinions(response, agent_a_id, agent_b_id):
-    """Parse the JSON opinion response from the LLM. Returns (float, float)."""
-    # Try to extract JSON from the response
-    try:
-        # Find JSON object in response
-        start = response.find("{")
-        end = response.rfind("}") + 1
-        if start >= 0 and end > start:
-            data = json.loads(response[start:end])
-            a = float(data.get("a") or 0.0)
-            b = float(data.get("b") or 0.0)
-            # Clamp to [-1, 1]
-            a = max(-1.0, min(1.0, a))
-            b = max(-1.0, min(1.0, b))
-            return a, b
-    except (json.JSONDecodeError, ValueError, KeyError, TypeError):
-        pass
-
-    # Fallback: return current opinions with small random drift
-    print(f"[llm_helper] Could not parse opinions from: {response[:100]}")
-    # Read current stances and add noise
-    try:
-        stance_a = _get_current_stance(agent_a_id)
-        stance_b = _get_current_stance(agent_b_id)
-        # Try to extract numbers from stance
-        a = _extract_number(stance_a)
-        b = _extract_number(stance_b)
-    except Exception:
-        a, b = 0.0, 0.0
-    # Add small random perturbation
-    a = max(-1.0, min(1.0, a + random.uniform(-0.1, 0.1)))
-    b = max(-1.0, min(1.0, b + random.uniform(-0.1, 0.1)))
-    return a, b
-
-
 def _extract_number(text):
     """Try to extract a float from text like 'opinion score 0.45'."""
-    import re
     matches = re.findall(r"[-+]?\d*\.?\d+", text)
     if matches:
         val = float(matches[-1])
