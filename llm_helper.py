@@ -191,22 +191,57 @@ def _get_current_rationale(agent_id):
 
 # ── Rationale generation ─────────────────────────────────────────────────────
 
+_REFUSAL_PATTERNS = re.compile(
+    r"I need to decline|I can't|I cannot|I won't|not comfortable|"
+    r"respectfully decline|I'm unable|not appropriate|I must decline",
+    re.IGNORECASE,
+)
+
+
+def _is_degenerate_rationale(text):
+    """Check if a rationale is a refusal, empty header, or too short to be useful."""
+    if not text or len(text) < 15:
+        return True
+    if text.startswith("#"):
+        return True
+    if _REFUSAL_PATTERNS.search(text):
+        return True
+    return False
+
+
 def _generate_rationale(opinion, topic):
     """Prompt the LLM to generate a 1-sentence reason for why an agent holds their opinion."""
+    if opinion > 0.3:
+        stance_desc = "supports"
+    elif opinion < -0.3:
+        stance_desc = "opposes"
+    else:
+        stance_desc = "is conflicted about"
+
     prompt = (
+        f"You are creating a fictional character for a research simulation.\n"
         f'The topic is: "{topic}"\n'
-        f"A character's opinion on this is {opinion:.2f} on a scale from -1.0 "
-        f"(strongly against) to +1.0 (strongly in favor).\n"
-        f"Write ONE specific sentence explaining why this character holds this "
-        f"position. Be concrete — reference a specific concern, experience, or "
-        f"value. Do not be generic."
+        f"This character {stance_desc} this position "
+        f"(opinion score: {opinion:.2f}, scale: -1.0 to +1.0).\n"
+        f"Write ONE specific sentence giving this character's personal reason "
+        f"for their belief. Ground it in a concrete life experience, value, or "
+        f"concern. Write only the sentence — no headers, bullets, or markdown."
     )
-    response = call_llm(prompt, num_predict=50)
-    if response:
-        # Take just the first sentence to keep it concise
-        first_line = response.strip().split("\n")[0].strip()
-        return first_line
-    return "No specific reason given."
+    for attempt in range(2):
+        response = call_llm(prompt, num_predict=100)
+        if response:
+            first_line = response.strip().split("\n")[0].strip()
+            if not _is_degenerate_rationale(first_line):
+                return first_line
+        if attempt == 0:
+            print(f"[llm_helper] Degenerate rationale, retrying: {response!r:.80}")
+    # Fallback template
+    if opinion > 0.3:
+        return f"Based on personal experience, this position on {topic} seems right."
+    elif opinion < -0.3:
+        return f"Based on personal experience, this position on {topic} seems wrong."
+    else:
+        return f"There are valid points on both sides of {topic}."
 
 
 # ── Opinion extraction from response ─────────────────────────────────────────

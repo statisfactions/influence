@@ -33,7 +33,7 @@ NetLogo 7 model with three procedures: `setup` (initializes agents and the Pytho
 Python module loaded by NetLogo's Python extension. Manages all state between ticks via module-level globals and the filesystem.
 
 **Key functions:**
-- `setup_agents(num_agents, topic, model_name, memory_length, backend, claude_model)` — creates a timestamped run directory under `runs/`, assigns random initial opinions in [-1.0, 1.0], writes initial stances to per-agent memory files. When backend is `"claude"`, uses the `claude_model` parameter for API calls.
+- `setup_agents(num_agents, topic, model_name, memory_length, backend, claude_model)` — creates a timestamped run directory under `runs/`, assigns random initial opinions in [-1.0, 1.0], writes initial stances to per-agent memory files. Rationale generation uses character-based framing, retries once on degenerate output (refusals, empty headers), and falls back to a template. When backend is `"claude"`, uses the `claude_model` parameter for API calls.
 - `run_conversation(agent_a_id, agent_b_id, tick, memory_length)` — makes two sequential Ollama calls: one to generate a 3-turn conversation, one to extract numeric opinion scores; returns `{"opinion_a": float, "opinion_b": float, "snippet": str}`
 - `call_ollama(prompt, model, num_predict)` — stateless HTTP POST to Ollama API (temp 0.8, default 300 tokens, 120s timeout)
 - `get_agent_memory(agent_id, length)` — reads recent entries from `agent_memories/agent_{id}.txt`
