@@ -233,10 +233,13 @@ def _extract_opinion_from_response(response, fallback):
 
 # ── Transcript logging ────────────────────────────────────────────────────────
 
-def _log_transcript(tick, agent_a, agent_b, conversation, opinion_a, opinion_b):
+def _log_transcript(tick, agent_a, agent_b, conversation, opinion_a, opinion_b,
+                    prior_a=None, prior_b=None):
     """Append a conversation record to the master transcript."""
     with open(TRANSCRIPT_PATH, "a", encoding="utf-8") as f:
         f.write(f"=== Tick {tick} | Agent {agent_a} <-> Agent {agent_b} ===\n")
+        if prior_a is not None and prior_b is not None:
+            f.write(f"PRIOR_STANCE: A({agent_a})={prior_a:.3f}, B({agent_b})={prior_b:.3f}\n")
         f.write(conversation.rstrip() + "\n")
         f.write(f"Opinions after: A({agent_a})={opinion_a:.3f}, B({agent_b})={opinion_b:.3f}\n")
         f.write("\n")
@@ -457,7 +460,8 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     _append_memory(agent_b_id, entry_b)
 
     # Log to transcript
-    _log_transcript(tick, agent_a_id, agent_b_id, conversation, opinion_a, opinion_b)
+    _log_transcript(tick, agent_a_id, agent_b_id, conversation, opinion_a, opinion_b,
+                    prior_a=opinion_a_current, prior_b=opinion_b_current)
 
     return {"opinion_a": opinion_a, "opinion_b": opinion_b, "snippet": snippet}
 

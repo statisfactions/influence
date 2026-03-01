@@ -40,7 +40,7 @@ Python module loaded by NetLogo's Python extension. Manages all state between ti
 
 **Runtime files created (under `runs/<timestamp>/`):**
 - `agent_memories/agent_{id}.txt` — per-agent conversation history, entries delimited by `---\n`
-- `transcript.txt` — master log of all conversations with tick, agent IDs, full dialogue, and final opinions
+- `transcript.txt` — master log of all conversations with tick, agent IDs, prior opinions (`PRIOR_STANCE:`), full dialogue, and post-conversation opinions
 - `parse_failures.log` — log of opinion-extraction parse failures
 
 ### `plot_opinions.py`
