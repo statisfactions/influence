@@ -74,7 +74,7 @@ def parse_transcript(path, initial_opinions):
     return tick_list, series
 
 
-def plot(tick_list, series, sample_every=None):
+def plot(tick_list, series, output_dir=".", sample_every=None):
     fig, ax = plt.subplots(figsize=(10, 5))
 
     # Auto-calculate sampling interval if not provided
@@ -97,8 +97,9 @@ def plot(tick_list, series, sample_every=None):
     ax.set_title("Agent Opinions Over Time")
     ax.axhline(0, color="gray", linewidth=0.5, linestyle="--")
     plt.tight_layout()
-    plt.savefig("opinions_over_time.png", dpi=150)
-    print("Saved opinions_over_time.png")
+    out_path = os.path.join(output_dir, "opinions_over_time.png")
+    plt.savefig(out_path, dpi=150)
+    print(f"Saved {out_path}")
     plt.show()
 
 
@@ -114,6 +115,7 @@ if __name__ == "__main__":
 
     initial = get_initial_opinions(memory_dir)
     print(f"Found {len(initial)} agents with initial opinions")
+    run_dir = os.path.dirname(transcript_path) or "."
     tick_list, series = parse_transcript(transcript_path, initial)
     print(f"Reconstructed {len(tick_list)} ticks")
-    plot(tick_list, series)
+    plot(tick_list, series, output_dir=run_dir)
