@@ -91,11 +91,11 @@ In the NetLogo interface, set:
 |---|---|---|
 | `discussion-topic` | The issue agents will debate | (see UI) |
 | `llm-backend` | LLM backend: `ollama` or `claude` | `ollama` |
-| `ollama-model` | Model name (Ollama model, or ignored for Claude) | `qwen2.5:0.5b` |
+| `ollama-model` | Ollama model name (used when backend is `ollama`) | `qwen2.5:0.5b` |
+| `claude-model` | Claude model ID (used when backend is `claude`) | `claude-haiku-4-5-20251001` |
 | `num-agents` | Number of agents (4–100) | `9` |
 | `memory-length` | Past conversations included in each prompt | `5` |
-
-When using the **Claude** backend, the model defaults to `claude-haiku-4-5-20251001` regardless of the `ollama-model` field.
+| `max-ticks` | Auto-stop after this many ticks (0 = unlimited) | `500` |
 
 Keep `num-agents` low (25 is a good starting point) — each tick requires two sequential LLM calls and can take several seconds.
 
@@ -114,14 +114,15 @@ Keep `num-agents` low (25 is a good starting point) — each tick requires two s
 
 ## Output Files
 
-Each run creates (gitignored):
+Each run creates a timestamped directory under `runs/` (e.g. `runs/2026-03-01_143022/`):
 
 | File | Contents |
 |---|---|
-| `agent_memories/agent_<id>.txt` | Per-agent conversation history, one entry per tick |
-| `transcript.txt` | Master log of every conversation with tick, agent IDs, full dialogue, and final opinions |
+| `runs/<timestamp>/agent_memories/agent_<id>.txt` | Per-agent conversation history, one entry per tick |
+| `runs/<timestamp>/transcript.txt` | Master log of every conversation with tick, agent IDs, full dialogue, and final opinions |
+| `runs/<timestamp>/parse_failures.log` | Log of opinion-extraction parse failures |
 
-These are cleared and recreated on each **setup**.
+Previous runs are preserved — each **setup** creates a new directory.
 
 ## Architecture
 
@@ -130,6 +131,16 @@ Two files comprise the system:
 **`positive_influence_llm.nlogox`** — NetLogo 7 model. Handles the UI, agent grid, and visualization. Each tick it picks a random pair of agents and delegates the conversation to Python.
 
 **`llm_helper.py`** — Python module loaded by NetLogo's Python extension. Makes all LLM API calls (Ollama or Claude), manages per-agent memory files, and writes the transcript. No external dependencies.
+
+**`plot_opinions.py`** — Standalone plotting script. Reads a transcript file and the corresponding agent memory files to reconstruct and plot agent opinions over time. Requires `matplotlib`.
+
+```bash
+# Plot from a specific run
+python plot_opinions.py runs/2026-03-01_143022/transcript.txt
+
+# Plot from legacy transcript.txt in the current directory (default)
+python plot_opinions.py
+```
 
 Each tick makes two LLM calls:
 1. Generate a 3-turn natural language conversation between the two agents
