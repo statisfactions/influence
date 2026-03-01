@@ -52,7 +52,7 @@ def _load_env():
 
 # ── LLM API ──────────────────────────────────────────────────────────────────
 
-def call_llm(prompt, model=None, num_predict=150):
+def call_llm(prompt, model=None, num_predict=300):
     """Route to the active backend (Ollama or Claude)."""
     if _backend == "claude":
         return call_claude(prompt, model=model, max_tokens=num_predict)
