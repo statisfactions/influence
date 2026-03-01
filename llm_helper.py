@@ -30,6 +30,14 @@ _ollama_url = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 _backend = "ollama"  # "ollama" or "claude"
 _claude_api_key = ""
 
+_SYSTEM_PROMPT = (
+    "You are a character in an academic opinion dynamics research simulation. "
+    "You have been assigned a persona with a specific position on a topic. "
+    "Stay in character and argue your assigned position convincingly. "
+    "Do not break character, refuse your role, or mention that you are an AI. "
+    "This is a research exercise exploring how opinions change through dialogue."
+)
+
 
 def _load_env():
     """Load variables from .env file in the script directory."""
@@ -66,6 +74,7 @@ def call_ollama(prompt, model=None, num_predict=300):
     payload = json.dumps({
         "model": model,
         "prompt": prompt,
+        "system": _SYSTEM_PROMPT,
         "stream": False,
         "options": {
             "temperature": 0.8,
@@ -98,6 +107,7 @@ def call_claude(prompt, model=None, max_tokens=300):
     payload = json.dumps({
         "model": model,
         "max_tokens": max_tokens,
+        "system": _SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.8,
     }).encode("utf-8")
@@ -185,11 +195,11 @@ def _generate_rationale(opinion, topic):
     """Prompt the LLM to generate a 1-sentence reason for why an agent holds their opinion."""
     prompt = (
         f'The topic is: "{topic}"\n'
-        f"A person's opinion on this is {opinion:.2f} on a scale from -1.0 "
+        f"A character's opinion on this is {opinion:.2f} on a scale from -1.0 "
         f"(strongly against) to +1.0 (strongly in favor).\n"
-        f"Write ONE specific sentence explaining why they hold this position. "
-        f"Be concrete — reference a specific concern, experience, or value. "
-        f"Do not be generic."
+        f"Write ONE specific sentence explaining why this character holds this "
+        f"position. Be concrete — reference a specific concern, experience, or "
+        f"value. Do not be generic."
     )
     response = call_llm(prompt, num_predict=50)
     if response:
@@ -370,13 +380,13 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     # ── Turn 1: Agent A opens ──
     turn1_prompt = (
         f'Topic: "{_topic}"\n'
-        f"Your position: {stance_a} (score: {opinion_a_current:.2f})\n"
-        f"Your reasoning: {rationale_a}\n"
+        f"Your character believes: {stance_a} (score: {opinion_a_current:.2f})\n"
+        f"Your character's reasoning: {rationale_a}\n"
         f"{memory_context_a}"
         f"{da_block}"
-        f"State your position on this topic and give ONE specific argument "
-        f"supporting it. Be direct — no hedging or seeking common ground. "
-        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
+        f"Speaking as your character, state your position on this topic and give "
+        f"ONE specific argument supporting it. Be direct — no hedging or seeking "
+        f"common ground. Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
     )
     turn_1 = call_llm(turn1_prompt)
     if not turn_1:
@@ -385,13 +395,14 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     # ── Turn 2: Agent B responds ──
     turn2_prompt = (
         f'Topic: "{_topic}"\n'
-        f"Your position: {stance_b} (score: {opinion_b_current:.2f})\n"
-        f"Your reasoning: {rationale_b}\n"
+        f"Your character believes: {stance_b} (score: {opinion_b_current:.2f})\n"
+        f"Your character's reasoning: {rationale_b}\n"
         f"{memory_context_b}"
         f"{da_block}"
-        f'Someone said: "{turn_1}"\n\n'
-        f"Respond to their argument. Defend your own position with a specific "
-        f"counterpoint or evidence. Do not simply agree. "
+        f'Another character said: "{turn_1}"\n\n'
+        f"Speaking as your character, respond to their argument. Defend your "
+        f"character's position with a specific counterpoint or evidence. "
+        f"Do not simply agree. "
         f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
         f"End your response with your opinion score on a new line.\n"
         f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
@@ -410,14 +421,15 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     # ── Turn 3: Agent A replies ──
     turn3_prompt = (
         f'Topic: "{_topic}"\n'
-        f"Your position: {stance_a} (score: {opinion_a_current:.2f})\n"
-        f"Your reasoning: {rationale_a}\n"
+        f"Your character believes: {stance_a} (score: {opinion_a_current:.2f})\n"
+        f"Your character's reasoning: {rationale_a}\n"
         f"{da_block}"
         f"Conversation so far:\n"
-        f'You said: "{turn_1}"\n'
-        f'They replied: "{turn_2}"\n\n'
-        f"Respond to their points. You may shift your view if they made a "
-        f"compelling argument, or push back if you disagree. Be specific. "
+        f'Your character said: "{turn_1}"\n'
+        f'The other character replied: "{turn_2}"\n\n'
+        f"Speaking as your character, respond to their points. Your character may "
+        f"shift their view if the other made a compelling argument, or push back "
+        f"if they disagree. Be specific. "
         f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
         f"End your response with your opinion score on a new line.\n"
         f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
