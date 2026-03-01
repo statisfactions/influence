@@ -9,7 +9,7 @@ import os
 import re
 import matplotlib.pyplot as plt
 
-SAMPLE_EVERY = 25
+TARGET_POINTS = 200  # aim for ~this many data points per agent
 
 
 def get_initial_opinions(memory_dir):
@@ -74,8 +74,12 @@ def parse_transcript(path, initial_opinions):
     return tick_list, series
 
 
-def plot(tick_list, series, sample_every=SAMPLE_EVERY):
+def plot(tick_list, series, sample_every=None):
     fig, ax = plt.subplots(figsize=(10, 5))
+
+    # Auto-calculate sampling interval if not provided
+    if sample_every is None:
+        sample_every = max(1, len(tick_list) // TARGET_POINTS)
 
     # Sample ticks
     sampled_idx = [i for i, t in enumerate(tick_list) if t % sample_every == 0]
