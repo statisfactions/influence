@@ -276,6 +276,40 @@ def _extract_opinion_from_response(response, fallback):
     return fallback
 
 
+def _extract_paired_opinions(response, fallback_a, fallback_b):
+    """Extract OPINION_A and OPINION_B from a symmetric scoring response.
+
+    Returns (opinion_a, opinion_b) as floats clamped to [-1, 1].
+    Falls back to the provided defaults on parse failure.
+    """
+    global _parse_attempts, _parse_failures
+    cleaned = re.sub(r"\*\*", "", response)
+
+    def _find_opinion(tag, fallback):
+        global _parse_attempts, _parse_failures
+        _parse_attempts += 1
+        # Try exact TAG: <float>
+        match = re.search(rf"{tag}:\s*([-+]?\d*\.?\d+)", cleaned)
+        if not match:
+            # Fallback: any float on the same line as the tag
+            match = re.search(rf"{tag}:.*?([-+]?\d*\.?\d+)", cleaned)
+        if match:
+            try:
+                return max(-1.0, min(1.0, float(match.group(1))))
+            except ValueError:
+                pass
+        _parse_failures += 1
+        rate = _parse_failures / _parse_attempts * 100
+        print(f"[llm_helper] Parse failure for {tag} ({_parse_failures}/{_parse_attempts}, {rate:.1f}%) — using fallback {fallback:.2f}")
+        with open(PARSE_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"Failure {_parse_failures}/{_parse_attempts} ({rate:.1f}%) | tag={tag} | fallback={fallback:.2f} | response={response[:200]!r}\n")
+        return fallback
+
+    opinion_a = _find_opinion("OPINION_A", fallback_a)
+    opinion_b = _find_opinion("OPINION_B", fallback_b)
+    return opinion_a, opinion_b
+
+
 # ── Transcript logging ────────────────────────────────────────────────────────
 
 def _log_transcript(tick, agent_a, agent_b, conversation, opinion_a, opinion_b,
@@ -376,7 +410,8 @@ def setup_agents(num_agents, topic, model_name, memory_length=5, backend="ollama
 
 def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
     """
-    Run a 3-turn conversation between two agents via Ollama (one LLM call per turn).
+    Run a 4-turn conversation between two agents (A-B-A-B) with symmetric scoring.
+    Uses 5 LLM calls: 4 conversation turns + 1 scoring pass.
     Returns a dict: {"opinion_a": float, "opinion_b": float, "snippet": str}
     """
     if memory_length is None:
@@ -438,20 +473,11 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"Speaking as your character, respond to their argument. Defend your "
         f"character's position with a specific counterpoint or evidence. "
         f"Do not simply agree. "
-        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
-        f"End your response with your opinion score on a new line.\n"
-        f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
-        f"Example: OPINION: 0.35\n"
-        f"Example: OPINION: -0.72"
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
     )
-    turn2_raw = call_llm(turn2_prompt)
-    if not turn2_raw:
-        turn2_raw = f"I disagree. {stance_b}.\nOPINION: {opinion_b_current:.2f}"
-
-    # Parse B's opinion from Turn 2
-    opinion_b = _extract_opinion_from_response(turn2_raw, opinion_b_current)
-    # Strip the OPINION line from displayed text
-    turn_2 = re.sub(r"\n?OPINION:.*", "", turn2_raw).strip()
+    turn_2 = call_llm(turn2_prompt)
+    if not turn_2:
+        turn_2 = f"I disagree. {stance_b}."
 
     # ── Turn 3: Agent A replies ──
     turn3_prompt = (
@@ -465,23 +491,55 @@ def run_conversation(agent_a_id, agent_b_id, tick, memory_length=None):
         f"Speaking as your character, respond to their points. Your character may "
         f"shift their view if the other made a compelling argument, or push back "
         f"if they disagree. Be specific. "
-        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown.\n\n"
-        f"End your response with your opinion score on a new line.\n"
-        f"The score must be a number from -1.0 (strongly against) to 1.0 (strongly in favor).\n"
-        f"Example: OPINION: 0.35\n"
-        f"Example: OPINION: -0.72"
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
     )
-    turn3_raw = call_llm(turn3_prompt)
-    if not turn3_raw:
-        turn3_raw = f"That's an interesting point, but I maintain my view.\nOPINION: {opinion_a_current:.2f}"
+    turn_3 = call_llm(turn3_prompt)
+    if not turn_3:
+        turn_3 = "That's an interesting point, but I maintain my view."
 
-    # Parse A's opinion from Turn 3
-    opinion_a = _extract_opinion_from_response(turn3_raw, opinion_a_current)
-    # Strip the OPINION line from displayed text
-    turn_3 = re.sub(r"\n?OPINION:.*", "", turn3_raw).strip()
+    # ── Turn 4: Agent B responds to A's rebuttal ──
+    turn4_prompt = (
+        f'Topic: "{_topic}"\n'
+        f"Your character believes: {stance_b} (score: {opinion_b_current:.2f})\n"
+        f"Your character's reasoning: {rationale_b}\n"
+        f"{da_block}"
+        f"Conversation so far:\n"
+        f'Agent A said: "{turn_1}"\n'
+        f'Your character replied: "{turn_2}"\n'
+        f'Agent A responded: "{turn_3}"\n\n'
+        f"Speaking as your character, respond to their latest points. Your character may "
+        f"shift their view if the other made a compelling argument, or push back "
+        f"if they disagree. Be specific. "
+        f"Keep it to 2-3 sentences MAX. No headers, bullets, or markdown."
+    )
+    turn_4 = call_llm(turn4_prompt)
+    if not turn_4:
+        turn_4 = "I've considered your points but stand by my position."
+
+    # ── Symmetric scoring pass ──
+    scoring_prompt = (
+        f'Given this conversation about "{_topic}":\n'
+        f"A: {turn_1}\n"
+        f"B: {turn_2}\n"
+        f"A: {turn_3}\n"
+        f"B: {turn_4}\n\n"
+        f"Agent A's prior stance: {stance_a} (score: {opinion_a_current:.2f})\n"
+        f"Agent A's reasoning: {rationale_a}\n\n"
+        f"Agent B's prior stance: {stance_b} (score: {opinion_b_current:.2f})\n"
+        f"Agent B's reasoning: {rationale_b}\n\n"
+        f"Based on the conversation, what is each agent's updated opinion?\n"
+        f"Each agent may shift their view if the other made a compelling argument, or hold firm if unconvinced.\n"
+        f"Score from -1.0 (strongly against) to 1.0 (strongly in favor).\n\n"
+        f"OPINION_A: <float>\n"
+        f"OPINION_B: <float>"
+    )
+    scoring_response = call_llm(scoring_prompt, num_predict=50)
+    opinion_a, opinion_b = _extract_paired_opinions(
+        scoring_response, opinion_a_current, opinion_b_current
+    )
 
     # Build the full conversation text
-    conversation = f"A: {turn_1}\nB: {turn_2}\nA: {turn_3}"
+    conversation = f"A: {turn_1}\nB: {turn_2}\nA: {turn_3}\nB: {turn_4}"
 
     # Build a short snippet for display
     snippet = f"A: {turn_1[:80]}" if turn_1 else "..."
