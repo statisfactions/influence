@@ -87,13 +87,20 @@ def call_ollama(prompt, model=None, num_predict=300):
         data=payload,
         headers={"Content-Type": "application/json"},
     )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-            return body.get("response", "").strip()
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
-        print(f"[llm_helper] Ollama error: {e}")
-        return ""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                return body.get("response", "").strip()
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            print(f"[llm_helper] Ollama error (attempt {attempt+1}/3): {e}")
+        except (ConnectionError, OSError) as e:
+            print(f"[llm_helper] Ollama connection error (attempt {attempt+1}/3): {e}")
+        if attempt < 2:
+            import time
+            time.sleep(2 ** attempt)
+    print("[llm_helper] Ollama failed after 3 attempts")
+    return ""
 
 
 def call_claude(prompt, model=None, max_tokens=300):
@@ -121,19 +128,25 @@ def call_claude(prompt, model=None, max_tokens=300):
             "anthropic-version": "2023-06-01",
         },
     )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-            # Extract text from the first content block
-            content = body.get("content", [])
-            if content and content[0].get("type") == "text":
-                return content[0]["text"].strip()
-            return ""
-    except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
-        print(f"[llm_helper] Claude API error: {e}")
-        if hasattr(e, "read"):
-            print(f"[llm_helper] Response: {e.read().decode('utf-8', errors='replace')[:500]}")
-        return ""
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(req, timeout=120) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                content = body.get("content", [])
+                if content and content[0].get("type") == "text":
+                    return content[0]["text"].strip()
+                return ""
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as e:
+            print(f"[llm_helper] Claude API error (attempt {attempt+1}/3): {e}")
+            if hasattr(e, "read"):
+                print(f"[llm_helper] Response: {e.read().decode('utf-8', errors='replace')[:500]}")
+        except (ConnectionError, OSError) as e:
+            print(f"[llm_helper] Claude connection error (attempt {attempt+1}/3): {e}")
+        if attempt < 2:
+            import time
+            time.sleep(2 ** attempt)
+    print("[llm_helper] Claude API failed after 3 attempts")
+    return ""
 
 
 # ── Memory management ────────────────────────────────────────────────────────
