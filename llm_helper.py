@@ -244,14 +244,17 @@ def _log_transcript(tick, agent_a, agent_b, conversation, opinion_a, opinion_b):
 
 # ── Setup ─────────────────────────────────────────────────────────────────────
 
-def setup_agents(num_agents, topic, model_name, memory_length=5, backend="ollama"):
+def setup_agents(num_agents, topic, model_name, memory_length=5, backend="ollama",
+                  claude_model="claude-haiku-4-5-20251001"):
     """
     Initialize agent memory files and set random initial stances.
     Returns a list of initial opinion scores (floats in [-1, 1]).
     backend: "ollama" or "claude"
+    claude_model: model ID to use when backend is "claude"
     """
     global _topic, _model, _memory_length, _num_agents, _parse_attempts, _parse_failures
     global _backend, _claude_api_key
+    global MEMORY_DIR, TRANSCRIPT_PATH, PARSE_LOG_PATH
     _topic = topic
     _model = model_name
     _memory_length = memory_length
@@ -263,28 +266,31 @@ def setup_agents(num_agents, topic, model_name, memory_length=5, backend="ollama
         _claude_api_key = env_vars.get("ANTHROPIC_API_KEY", "")
         if not _claude_api_key:
             print("[llm_helper] WARNING: ANTHROPIC_API_KEY not found in .env file")
-        # Default to haiku if no model specified or if an ollama model name was passed
-        if not model_name or ":" in model_name:
-            _model = "claude-haiku-4-5-20251001"
-            print(f"[llm_helper] Using Claude model: {_model}")
+        _model = claude_model
+        print(f"[llm_helper] Using Claude model: {_model}")
         print(f"[llm_helper] Backend: Claude API")
 
-    # Create/clear memory directory
+    # Create run-specific output directory
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    run_dir = os.path.join(SCRIPT_DIR, "runs", timestamp)
+    MEMORY_DIR = os.path.join(run_dir, "agent_memories")
+    TRANSCRIPT_PATH = os.path.join(run_dir, "transcript.txt")
+    PARSE_LOG_PATH = os.path.join(run_dir, "parse_failures.log")
+    print(f"[llm_helper] Run directory: {run_dir}")
+
+    # Create memory directory
     os.makedirs(MEMORY_DIR, exist_ok=True)
-    for f in os.listdir(MEMORY_DIR):
-        fp = os.path.join(MEMORY_DIR, f)
-        if os.path.isfile(fp):
-            os.remove(fp)
 
     # Reset parse failure counters
     _parse_attempts = 0
     _parse_failures = 0
 
-    # Clear transcript and parse failure log
+    # Initialize transcript and parse failure log
     with open(TRANSCRIPT_PATH, "w", encoding="utf-8") as f:
-        f.write(f"# Transcript: {topic}\n# Model: {model_name}\n\n")
+        f.write(f"# Transcript: {topic}\n# Model: {_model}\n# Backend: {_backend}\n\n")
     with open(PARSE_LOG_PATH, "w", encoding="utf-8") as f:
-        f.write(f"# Parse failures: {topic} | {model_name}\n")
+        f.write(f"# Parse failures: {topic} | {_model}\n")
 
     # Generate random initial stances and opinions
     initial_opinions = []
