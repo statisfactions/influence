@@ -46,7 +46,7 @@ Python module loaded by NetLogo's Python extension. Manages all state between ti
 ### `plot_opinions.py`
 Standalone matplotlib script that reconstructs and plots agent opinions over time from a transcript file. Accepts an optional transcript path argument (defaults to `transcript.txt`); derives the `agent_memories/` directory as a sibling of the transcript file. Usage: `python plot_opinions.py runs/<timestamp>/transcript.txt`
 
-**Opinion extraction:** Each agent's turn ends with `OPINION: <float>`. A multi-tier regex extracts the score: (1) exact `OPINION: <float>` match, (2) any float on the same line as `OPINION:`, (3) any float near the word "opinion" (case-insensitive). Markdown bold markers (`**`) are stripped before matching. If all tiers fail, the previous stance is reused with a small random perturbation (±0.1).
+**Opinion extraction:** Each agent's turn ends with `OPINION: <float>`. A multi-tier regex extracts the score: (1) exact `OPINION: <float>` match, (2) any float on the same line as `OPINION:`, (3) any float near the word "opinion" (case-insensitive). Markdown bold markers (`**`) are stripped before matching. If all tiers fail, the previous stance is kept unchanged (failed turn, no drift).
 
 ## Opinion Scale
 

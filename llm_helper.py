@@ -237,8 +237,8 @@ def _extract_opinion_from_response(response, fallback):
     print(f"[llm_helper] Parse failure ({_parse_failures}/{_parse_attempts}, {rate:.1f}%) — using fallback {fallback:.2f}")
     with open(PARSE_LOG_PATH, "a", encoding="utf-8") as f:
         f.write(f"Failure {_parse_failures}/{_parse_attempts} ({rate:.1f}%) | fallback={fallback:.2f} | response={response[:200]!r}\n")
-    # Fallback: return previous opinion with small drift
-    return max(-1.0, min(1.0, fallback + random.uniform(-0.1, 0.1)))
+    # Fallback: keep previous opinion unchanged (failed turn)
+    return fallback
 
 
 # ── Transcript logging ────────────────────────────────────────────────────────
