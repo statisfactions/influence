@@ -81,7 +81,7 @@ to step
   ;; Pick a random agent-A
   let agent-a one-of turtles
   ;; Pick a random partner agent-B (different from A)
-  let agent-b one-of other turtles
+  let agent-b one-of turtles with [self != agent-a]
 
   let id-a [agent-id] of agent-a
   let id-b [agent-id] of agent-b
